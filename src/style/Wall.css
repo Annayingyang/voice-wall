@@ -1,0 +1,98 @@
+.wall-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #0b1222 0%, #0a0f1d 100%);
+  color: #e5e7eb;
+  font-family: system-ui, sans-serif;
+  padding: 40px 16px 80px;
+}
+
+.wall-container {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.wall-title {
+  text-align: center;
+  font-size: clamp(28px, 6vw, 60px);
+  font-weight: 900;
+  background: linear-gradient(90deg, #a78bfa, #f472b6 50%, #fb7185);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 32px;
+}
+
+.wall-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 40px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 24px;
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+}
+
+.wall-form input,
+.wall-form textarea {
+  width: 100%;
+  border-radius: 12px;
+  border: none;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e5e7eb;
+  font-size: 15px;
+  resize: vertical;
+}
+
+.wall-form button {
+  background: linear-gradient(90deg, #a78bfa, #f472b6 45%, #fb7185);
+  border: none;
+  padding: 14px;
+  border-radius: 12px;
+  color: #0b1020;
+  font-weight: 800;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+.wall-form button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(251, 113, 133, 0.35);
+}
+
+.wall-posts {
+  display: grid;
+  gap: 16px;
+}
+
+.wall-card {
+  background: radial-gradient(120% 120% at 0% 0%, rgba(255,255,255,.18) 0%, rgba(255,255,255,.06) 60%, rgba(255,255,255,.02) 100%);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+  padding: 20px;
+  box-shadow: 0 15px 40px rgba(0,0,0,.35);
+}
+
+.wall-card h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #f9fafb;
+}
+
+.wall-card small {
+  color: #94a3b8;
+}
+
+.wall-card p {
+  margin: 8px 0;
+  color: #d1d5db;
+  line-height: 1.5;
+}
+
+.no-posts {
+  text-align: center;
+  opacity: 0.7;
+  font-style: italic;
+}

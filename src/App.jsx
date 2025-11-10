@@ -1,35 +1,62 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect, useState } from "react";
+import { supabase } from "./lib/supabaseClient";
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [status, setStatus] = useState("Checking Supabase…");
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase.from("posts").select("*").limit(5);
+        if (error) throw error;
+        if (!cancelled) {
+          setStatus("✅ Supabase connected!");
+          setRows(data || []);
+        }
+      } catch (e) {
+        if (!cancelled) setStatus("❌ Supabase error: " + e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
-}
+    <div
+      style={{
+        maxWidth: 720,
+        margin: "40px auto",
+        fontFamily: "system-ui",
+        color: "#e5e7eb",
+        background: "#0b1222",
+        padding: 24,
+        borderRadius: 12,
+      }}
+    >
+      <h1>Voice Wall — Connection Test</h1>
+      <p>{status}</p>
 
-export default App
+      {loading ? (
+        <p>Loading…</p>
+      ) : (
+        <pre
+          style={{
+            background: "#111827",
+            color: "#22c55e",
+            padding: 12,
+            borderRadius: 8,
+            overflowX: "auto",
+          }}
+        >
+          {JSON.stringify(rows, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
