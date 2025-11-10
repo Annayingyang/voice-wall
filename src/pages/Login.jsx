@@ -39,7 +39,8 @@ export default function Login() {
     setSending(true);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: redirectTo },
+      options: { emailRedirectTo: "https://voice-wall.vercel.app/login" },
+
     });
     setSending(false);
     if (error) setErr(error.message);
