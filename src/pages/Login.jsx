@@ -1,116 +1,143 @@
 // src/pages/Login.jsx
 import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
+  const nav = useNavigate();
   const [session, setSession] = useState(null);
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  // hydrate session + listen for changes
+  // keep session in sync
   useEffect(() => {
-    let unsub = () => {};
-    supabase.auth.getSession().then(({ data }) => setSession(data?.session ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-    unsub = () => sub?.subscription?.unsubscribe?.();
-    return () => unsub();
+    supabase.auth.getSession().then(({ data }) => setSession(data.session || null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
-  // use current origin for redirect (works locally & after deploy)
+  // ---- Actions --------------------------------------------------------------
+
   const redirectTo = `${window.location.origin}/login`;
 
-  const sendMagicLink = async (e) => {
+  async function signInWithGoogle() {
+    setErr("");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo }, // works for localhost and vercel
+    });
+    if (error) setErr(error.message);
+  }
+
+  async function sendMagicLink(e) {
     e.preventDefault();
     setErr("");
-    setSent(false);
+    setSending(true);
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: redirectTo },
+    });
+    setSending(false);
+    if (error) setErr(error.message);
+    else setSent(true);
+  }
 
-    const cleaned = email.trim();
-    if (!cleaned) {
-      setErr("Please enter your email.");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const { error } = await supabase.auth.signInWithOtp({
-        email: cleaned,
-        options: { emailRedirectTo: redirectTo },
-      });
-      if (error) throw error;
-      setSent(true);
-    } catch (e) {
-      setErr(e.message || String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const signOut = async () => {
+  async function signOut() {
     setErr("");
-    await supabase.auth.signOut();
-  };
+    const { error } = await supabase.auth.signOut();
+    if (error) setErr(error.message);
+    else nav("/");
+  }
 
-  const signInWithGoogle = async () => {
-    setErr("");
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo },
-      });
-      if (error) throw error;
-    } catch (e) {
-      setErr(e.message || String(e));
-    }
-  };
+  // ---- UI -------------------------------------------------------------------
 
   if (session) {
     return (
-      <div style={{ maxWidth: 480, margin: "40px auto" }}>
-        <h2 style={{ margin: 0 }}>Logged in</h2>
-        <p style={{ opacity: 0.9 }}>{session.user.email}</p>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={signOut}>Sign out</button>
+      <div style={{ maxWidth: 520, margin: "40px auto", padding: 20 }}>
+        <h1 style={{ marginBottom: 8 }}>You’re signed in ✅</h1>
+        <p style={{ opacity: 0.8, marginBottom: 16 }}>{session.user.email}</p>
+        {err && (
+          <div style={{ marginBottom: 12, color: "#fecaca" }}>
+            {err}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Link className="btn btn-primary" to="/topics">Start Rewriting</Link>
+          <Link className="btn btn-ghost" to="/wall">View Wall</Link>
+          <button className="btn btn-outline" onClick={signOut}>Sign out</button>
         </div>
       </div>
     );
   }
 
   return (
-    <form onSubmit={sendMagicLink} style={{ maxWidth: 480, margin: "40px auto" }}>
-      <h2 style={{ margin: 0 }}>Login</h2>
-      <p style={{ opacity: 0.8 }}>We’ll email you a magic link.</p>
+    <div style={{ maxWidth: 520, margin: "40px auto", padding: 20 }}>
+      <h1 style={{ marginBottom: 8 }}>Login</h1>
+      <p style={{ opacity: 0.8, marginBottom: 20 }}>
+        Sign in with Google or get a magic link by email.
+      </p>
 
-      <input
-        type="email"
-        required
-        value={email}
-        onChange={(e) => {
-          setEmail(e.target.value);
-          setSent(false);
-          setErr("");
-        }}
-        placeholder="you@example.com"
-        style={{ width: "100%", padding: 10, margin: "12px 0" }}
-        disabled={loading}
-      />
-
-      <div style={{ display: "flex", gap: 8 }}>
-        <button disabled={loading} type="submit">
-          {loading ? "Sending…" : "Send magic link"}
-        </button>
-        <button type="button" onClick={signInWithGoogle} disabled={loading}>
-          Continue with Google
-        </button>
-      </div>
-
-      {sent && <p style={{ color: "#a7f3d0" }}>Check your inbox for the magic link.</p>}
       {err && (
-        <p style={{ color: "#fecaca", marginTop: 8 }}>
+        <div style={{
+          marginBottom: 14,
+          padding: "10px 12px",
+          borderRadius: 10,
+          border: "1px solid rgba(248,113,113,.35)",
+          background: "rgba(248,113,113,.12)",
+          color: "#fecaca"
+        }}>
           {err}
+        </div>
+      )}
+
+      {/* Google */}
+      <button onClick={signInWithGoogle} className="btn btn-primary" style={{ width: "100%", marginBottom: 14 }}>
+        Continue with Google
+      </button>
+
+      <div style={{ textAlign: "center", opacity: 0.6, margin: "10px 0" }}>or</div>
+
+      {/* Magic link */}
+      <form onSubmit={sendMagicLink}>
+        <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
+          Email address
+        </label>
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@example.com"
+          style={{
+            width: "100%",
+            padding: 12,
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,.15)",
+            background: "rgba(255,255,255,.03)",
+            color: "#e5e7eb",
+            marginBottom: 12,
+          }}
+        />
+        <button className="btn btn-outline" type="submit" disabled={sending} style={{ width: "100%" }}>
+          {sending ? "Sending…" : "Send magic link"}
+        </button>
+      </form>
+
+      {sent && (
+        <p style={{ marginTop: 12, color: "#86efac" }}>
+          Check your inbox for the magic link. You can close this tab.
         </p>
       )}
-    </form>
+
+      <div style={{ marginTop: 20, opacity: 0.7 }}>
+        <small>
+          Redirect URL used: <code>{redirectTo}</code>
+        </small>
+      </div>
+    </div>
   );
 }

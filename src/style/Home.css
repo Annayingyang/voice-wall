@@ -230,3 +230,14 @@ html, body {
     center/cover no-repeat url("/hero.png");
   overflow-x: hidden;   /* ✅ ensures nothing spills horizontally */
 }
+
+/* make sure content sits above */
+.hero, .hero-inner { position: relative; z-index: 2; }
+.cta-row .btn { position: relative; z-index: 3; }
+
+/* decorative orbs must not block taps */
+.orb { pointer-events: none; z-index: 0; }
+
+/* (optional) if you have any overlay/gradient div, also: */
+.hero::before, .hero::after { pointer-events: none; }
+
