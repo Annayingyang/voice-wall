@@ -1,37 +1,25 @@
 // src/pages/Login.jsx
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 export default function Login() {
-  const nav = useNavigate();
-  const [session, setSession] = useState(null);
   const [email, setEmail] = useState("");
-  const [sending, setSending] = useState(false);
+  const [session, setSession] = useState(null);
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
   const [err, setErr] = useState("");
 
-  // keep session in sync
+  // where the magic-link returns
+  const redirectTo = useMemo(
+    () => `${window.location.origin}/login`,
+    []
+  );
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session || null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-    });
-    return () => sub.subscription.unsubscribe();
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const sub = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => sub.data.subscription.unsubscribe();
   }, []);
-
-  // ---- Actions --------------------------------------------------------------
-
-  const redirectTo = `${window.location.origin}/login`;
-
-  async function signInWithGoogle() {
-    setErr("");
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo }, // works for localhost and vercel
-    });
-    if (error) setErr(error.message);
-  }
 
   async function sendMagicLink(e) {
     e.preventDefault();
@@ -39,106 +27,80 @@ export default function Login() {
     setSending(true);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: "https://voice-wall.vercel.app/login" },
-
+      options: { emailRedirectTo: redirectTo },
     });
     setSending(false);
     if (error) setErr(error.message);
     else setSent(true);
   }
 
-  async function signOut() {
+  async function signInGuest() {
     setErr("");
-    const { error } = await supabase.auth.signOut();
+    const { data, error } = await supabase.auth.signInAnonymously();
     if (error) setErr(error.message);
-    else nav("/");
+    else setSession(data.session);
   }
 
-  // ---- UI -------------------------------------------------------------------
+  async function signOut() {
+    await supabase.auth.signOut();
+    setSession(null);
+    setSent(false);
+    setEmail("");
+  }
 
+  // Already logged in
   if (session) {
     return (
-      <div style={{ maxWidth: 520, margin: "40px auto", padding: 20 }}>
-        <h1 style={{ marginBottom: 8 }}>You’re signed in ✅</h1>
-        <p style={{ opacity: 0.8, marginBottom: 16 }}>{session.user.email}</p>
-        {err && (
-          <div style={{ marginBottom: 12, color: "#fecaca" }}>
-            {err}
-          </div>
-        )}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link className="btn btn-primary" to="/topics">Start Rewriting</Link>
-          <Link className="btn btn-ghost" to="/wall">View Wall</Link>
-          <button className="btn btn-outline" onClick={signOut}>Sign out</button>
-        </div>
+      <div style={{ maxWidth: 520, margin: "40px auto" }}>
+        <h2>You're signed in</h2>
+        <p style={{ opacity: .8 }}>
+          {session.user.email || "Guest (anonymous)"}<br/>
+          User ID: <code>{session.user.id}</code>
+        </p>
+        <button className="btn btn-primary" onClick={signOut}>Sign out</button>
       </div>
     );
   }
 
+  // Not logged in
   return (
-    <div style={{ maxWidth: 520, margin: "40px auto", padding: 20 }}>
-      <h1 style={{ marginBottom: 8 }}>Login</h1>
-      <p style={{ opacity: 0.8, marginBottom: 20 }}>
-        Sign in with Google or get a magic link by email.
-      </p>
+    <div style={{ maxWidth: 520, margin: "40px auto" }}>
+      <h2>Sign in</h2>
 
-      {err && (
-        <div style={{
-          marginBottom: 14,
-          padding: "10px 12px",
-          borderRadius: 10,
-          border: "1px solid rgba(248,113,113,.35)",
-          background: "rgba(248,113,113,.12)",
-          color: "#fecaca"
-        }}>
-          {err}
-        </div>
-      )}
-
-      {/* Google */}
-      <button onClick={signInWithGoogle} className="btn btn-primary" style={{ width: "100%", marginBottom: 14 }}>
-        Continue with Google
-      </button>
-
-      <div style={{ textAlign: "center", opacity: 0.6, margin: "10px 0" }}>or</div>
-
-      {/* Magic link */}
-      <form onSubmit={sendMagicLink}>
-        <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
-          Email address
+      <form onSubmit={sendMagicLink} style={{ display: "grid", gap: 12, marginTop: 12 }}>
+        <label>
+          Email
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e)=>setEmail(e.target.value)}
+            placeholder="you@example.com"
+            style={{ width:"100%", padding:10, borderRadius:10 }}
+          />
         </label>
-        <input
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          style={{
-            width: "100%",
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,.15)",
-            background: "rgba(255,255,255,.03)",
-            color: "#e5e7eb",
-            marginBottom: 12,
-          }}
-        />
-        <button className="btn btn-outline" type="submit" disabled={sending} style={{ width: "100%" }}>
-          {sending ? "Sending…" : "Send magic link"}
+
+        <button type="submit" className="btn btn-primary" disabled={sending}>
+          {sending ? "Sending…" : "Send Magic Link"}
         </button>
       </form>
 
+      <div style={{ marginTop: 16 }}>
+        <button className="btn btn-ghost" onClick={signInGuest}>
+          Continue as Guest
+        </button>
+      </div>
+
       {sent && (
-        <p style={{ marginTop: 12, color: "#86efac" }}>
-          Check your inbox for the magic link. You can close this tab.
+        <p style={{ marginTop: 12, color: "#22c55e" }}>
+          Check your inbox for the magic link.
         </p>
       )}
-
-      <div style={{ marginTop: 20, opacity: 0.7 }}>
-        <small>
-          Redirect URL used: <code>{redirectTo}</code>
-        </small>
-      </div>
+      {err && (
+        <p style={{ marginTop: 12, color: "#ef4444" }}>
+          {err}
+        </p>
+      )}
     </div>
   );
 }
