@@ -1,106 +1,144 @@
 // src/pages/Login.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
   const [session, setSession] = useState(null);
-  const [sent, setSent] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [err, setErr] = useState("");
 
-  // where the magic-link returns
-  const redirectTo = useMemo(
-    () => `${window.location.origin}/login`,
-    []
-  );
+  const [email, setEmail] = useState("");
+  const [phase, setPhase] = useState("email"); // 'email' | 'code'
+  const [code, setCode] = useState("");
+
+  const [sending, setSending] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [err, setErr] = useState("");
+  const [info, setInfo] = useState("");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const sub = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-    return () => sub.data.subscription.unsubscribe();
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) =>
+      setSession(s)
+    );
+    return () => sub.subscription.unsubscribe();
   }, []);
 
-  async function sendMagicLink(e) {
+  // 1) Send a one-time code to email (no redirect needed)
+  const sendCode = async (e) => {
     e.preventDefault();
     setErr("");
+    setInfo("");
     setSending(true);
+
+    // This sends an email with both a magic link AND a 6-digit code.
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: redirectTo },
+      options: { shouldCreateUser: true }, // create account if not exists
     });
+
     setSending(false);
-    if (error) setErr(error.message);
-    else setSent(true);
-  }
+    if (error) {
+      setErr(error.message);
+    } else {
+      setInfo("We emailed you a 6-digit code. Enter it below.");
+      setPhase("code");
+    }
+  };
 
-  async function signInGuest() {
+  // 2) Verify the 6-digit code (no redirect)
+  const verifyCode = async (e) => {
+    e.preventDefault();
     setErr("");
-    const { data, error } = await supabase.auth.signInAnonymously();
+    setVerifying(true);
+
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token: code.trim(),
+      type: "email", // <— important: verify email OTP code
+    });
+
+    setVerifying(false);
     if (error) setErr(error.message);
-    else setSession(data.session);
-  }
+    else setInfo("Signed in ✅");
+  };
 
-  async function signOut() {
+  // 3) Guest sign-in (anonymous)
+  const signInGuest = async () => {
+    setErr("");
+    const { error } = await supabase.auth.signInAnonymously();
+    if (error) setErr(error.message);
+  };
+
+  const signOut = async () => {
     await supabase.auth.signOut();
-    setSession(null);
-    setSent(false);
-    setEmail("");
-  }
+  };
 
-  // Already logged in
+  // Already logged in?
   if (session) {
     return (
-      <div style={{ maxWidth: 520, margin: "40px auto" }}>
-        <h2>You're signed in</h2>
-        <p style={{ opacity: .8 }}>
-          {session.user.email || "Guest (anonymous)"}<br/>
-          User ID: <code>{session.user.id}</code>
-        </p>
-        <button className="btn btn-primary" onClick={signOut}>Sign out</button>
+      <div style={{ maxWidth: 480, margin: "40px auto" }}>
+        <h2>Logged in</h2>
+        <p style={{ opacity: 0.8 }}>{session.user.email || "Guest user"}</p>
+        <button className="btn btn-primary" onClick={signOut}>
+          Sign out
+        </button>
       </div>
     );
   }
 
-  // Not logged in
   return (
-    <div style={{ maxWidth: 520, margin: "40px auto" }}>
-      <h2>Sign in</h2>
+    <div style={{ maxWidth: 480, margin: "40px auto", display: "grid", gap: 18 }}>
+      <h1>Sign in</h1>
 
-      <form onSubmit={sendMagicLink} style={{ display: "grid", gap: 12, marginTop: 12 }}>
-        <label>
-          Email
+      {/* Email → Code flow */}
+      {phase === "email" && (
+        <form onSubmit={sendCode} style={{ display: "grid", gap: 10 }}>
+          <label>Email</label>
           <input
             type="email"
             required
             value={email}
-            onChange={(e)=>setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            style={{ width:"100%", padding:10, borderRadius:10 }}
           />
-        </label>
+          <button className="btn btn-primary" disabled={sending}>
+            {sending ? "Sending…" : "Send 6-digit code"}
+          </button>
+        </form>
+      )}
 
-        <button type="submit" className="btn btn-primary" disabled={sending}>
-          {sending ? "Sending…" : "Send Magic Link"}
-        </button>
-      </form>
+      {phase === "code" && (
+        <form onSubmit={verifyCode} style={{ display: "grid", gap: 10 }}>
+          <label>Enter 6-digit code</label>
+          <input
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={6}
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="••••••"
+            autoFocus
+          />
+          <button className="btn btn-primary" disabled={verifying}>
+            {verifying ? "Verifying…" : "Verify and sign in"}
+          </button>
 
-      <div style={{ marginTop: 16 }}>
-        <button className="btn btn-ghost" onClick={signInGuest}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => setPhase("email")}
+          >
+            ← Back to email
+          </button>
+        </form>
+      )}
+
+      <div style={{ display: "grid", gap: 8 }}>
+        <button className="btn btn-outline" onClick={signInGuest}>
           Continue as Guest
         </button>
+        {info && <div style={{ color: "#a7f3d0" }}>{info}</div>}
+        {err && <div style={{ color: "#fecaca" }}>{err}</div>}
       </div>
-
-      {sent && (
-        <p style={{ marginTop: 12, color: "#22c55e" }}>
-          Check your inbox for the magic link.
-        </p>
-      )}
-      {err && (
-        <p style={{ marginTop: 12, color: "#ef4444" }}>
-          {err}
-        </p>
-      )}
     </div>
   );
 }
