@@ -1,6 +1,6 @@
 // src/components/Layout.jsx
 import { Link, Outlet } from "react-router-dom";
-
+import "../style/Layout.css";
 export default function Layout() {
   const wrap = {minHeight:"100vh",display:"flex",flexDirection:"column",background:"#0b1222",color:"#e5e7eb",fontFamily:"system-ui,sans-serif"};
   const head = {display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 20px",borderBottom:"1px solid rgba(255,255,255,.1)",position:"sticky",top:0,background:"rgba(15,23,42,.85)",backdropFilter:"blur(6px)",zIndex:10};
