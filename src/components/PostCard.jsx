@@ -1,9 +1,9 @@
+// src/components/PostCard.jsx
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import CommentBox from "./CommentBox";
 
 export default function PostCard({ post }) {
-  // Defensive: if parent accidentally passes nothing, avoid crash
   if (!post) return null;
 
   const [session, setSession] = useState(null);
@@ -11,29 +11,29 @@ export default function PostCard({ post }) {
   const [myReaction, setMyReaction] = useState(null);
   const [comments, setComments] = useState([]);
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false); // tiny debounce for reactions
 
-  // ---- Auth session boot + listener
+  // --- boot auth + listener
   useEffect(() => {
     let unsub = () => {};
     (async () => {
       try {
         const { data } = await supabase.auth.getSession();
         setSession(data?.session ?? null);
-      } catch (e) {
-        // ignore
-      }
+      } catch {}
       const sub = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
       unsub = () => sub?.data?.subscription?.unsubscribe?.();
     })();
     return () => unsub();
   }, []);
 
-  // ---- Initial pull: reactions + comments
+  // --- initial pull (reactions + comments)
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         setErr("");
+
         // reactions
         const { data: r, error: rErr } = await supabase
           .from("reactions")
@@ -45,12 +45,8 @@ export default function PostCard({ post }) {
         const likeCount = r?.filter((x) => x.type === "like").length || 0;
         const dislikeCount = r?.filter((x) => x.type === "dislike").length || 0;
         const me = r?.find((x) => x.user_id === session?.user?.id);
-        if (!cancelled) {
-          setCounts({ like: likeCount, dislike: dislikeCount });
-          setMyReaction(me?.type || null);
-        }
 
-        // comments
+        // comments (includes display_name if you added that column)
         const { data: c, error: cErr } = await supabase
           .from("comments")
           .select("*")
@@ -58,7 +54,12 @@ export default function PostCard({ post }) {
           .order("created_at", { ascending: true });
 
         if (cErr) throw cErr;
-        if (!cancelled) setComments(c || []);
+
+        if (!cancelled) {
+          setCounts({ like: likeCount, dislike: dislikeCount });
+          setMyReaction(me?.type || null);
+          setComments(c || []);
+        }
       } catch (e) {
         if (!cancelled) setErr(e.message || String(e));
       }
@@ -68,7 +69,7 @@ export default function PostCard({ post }) {
     };
   }, [post.id, session?.user?.id]);
 
-  // ---- Realtime updates: comments insert + any reactions change
+  // --- realtime (new comments + any reactions change from others)
   useEffect(() => {
     const chan = supabase
       .channel(`post-${post.id}`)
@@ -103,37 +104,76 @@ export default function PostCard({ post }) {
     return () => {
       try {
         supabase.removeChannel(chan);
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     };
   }, [post.id, session?.user?.id]);
 
-  // ---- React (like/dislike) with simple toggle
+  // --- optimistic reaction + pop anim + DB persist
   const react = async (type) => {
-    setErr("");
     if (!session) return alert("Sign in to react.");
+    if (busy) return;
+    setBusy(true);
+    setErr("");
+
+    // snapshot for rollback
+    const prev = { counts, myReaction };
+
+    // optimistic update
+    let { like, dislike } = counts;
+    let nextMy = myReaction;
+
+    if (myReaction === type) {
+      // toggle off
+      nextMy = null;
+      if (type === "like") like = Math.max(0, like - 1);
+      else dislike = Math.max(0, dislike - 1);
+    } else {
+      // switch or set
+      if (type === "like") like += 1;
+      else dislike += 1;
+
+      if (myReaction === "like") like = Math.max(0, like - 1);
+      if (myReaction === "dislike") dislike = Math.max(0, dislike - 1);
+
+      nextMy = type;
+    }
+
+    setCounts({ like, dislike });
+    setMyReaction(nextMy);
+
+    // tiny pop animation on the button
+    const btn = document.getElementById(`${post.id}-${type}`);
+    if (btn) {
+      btn.classList.remove("btn-pop");
+      // force reflow
+      void btn.offsetWidth;
+      btn.classList.add("btn-pop");
+    }
+
+    // persist to DB
     try {
-      // clear old reaction (if any)
-      const { error: delErr } = await supabase
+      // ensure one reaction per user
+      await supabase
         .from("reactions")
         .delete()
         .eq("post_id", post.id)
         .eq("user_id", session.user.id);
-      if (delErr) throw delErr;
 
-      // if clicking same icon, we just removed it (toggle off)
-      if (myReaction === type) return;
-
-      // insert new
-      const { error: insErr } = await supabase.from("reactions").insert({
-        post_id: post.id,
-        user_id: session.user.id,
-        type,
-      });
-      if (insErr) throw insErr;
+      if (nextMy) {
+        const { error } = await supabase.from("reactions").insert({
+          post_id: post.id,
+          user_id: session.user.id,
+          type: nextMy,
+        });
+        if (error) throw error;
+      }
     } catch (e) {
+      // rollback
+      setCounts(prev.counts);
+      setMyReaction(prev.myReaction);
       setErr(e.message || String(e));
+    } finally {
+      setTimeout(() => setBusy(false), 200);
     }
   };
 
@@ -166,7 +206,6 @@ export default function PostCard({ post }) {
       )}
       {post.display_name && <small>by {post.display_name}</small>}
 
-      {/* errors (RLS / network / etc.) */}
       {err && (
         <div
           style={{
@@ -184,6 +223,7 @@ export default function PostCard({ post }) {
 
       <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
         <button
+          id={`${post.id}-like`}
           onClick={() => react("like")}
           className={`btn ${myReaction === "like" ? "btn-primary" : ""}`}
           aria-pressed={myReaction === "like"}
@@ -192,6 +232,7 @@ export default function PostCard({ post }) {
           👍 {counts.like}
         </button>
         <button
+          id={`${post.id}-dislike`}
           onClick={() => react("dislike")}
           className={`btn ${myReaction === "dislike" ? "btn-primary" : ""}`}
           aria-pressed={myReaction === "dislike"}
@@ -201,6 +242,7 @@ export default function PostCard({ post }) {
         </button>
       </div>
 
+      {/* Comments (expects CommentBox to insert display_name) */}
       <CommentBox postId={post.id} comments={comments} />
     </div>
   );
